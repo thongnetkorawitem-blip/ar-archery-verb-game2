@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="th"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>AR ยิงธนูสู้คำกริยา</title>
+<link href="https://fonts.googleapis.com/css2?family=Mitr:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils@0.3.1675466862/camera_utils.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1675469240/hands.js" crossorigin="anonymous"></script>
+<style>
+*{font-family:'Mitr',sans-serif;box-sizing:border-box}
+html,body{margin:0;height:100%;overflow:hidden;background:#111;color:#fff;user-select:none}
+#cam{position:fixed;inset:0;width:100%;height:100%;object-fit:cover;transform:scaleX(-1)}
+canvas{position:fixed;inset:0;pointer-events:none}
+.zone{position:fixed;top:0;bottom:0;pointer-events:none}
+#zF{left:0;width:25%;background:rgba(255,193,7,.12);border-right:3px dashed rgba(255,255,255,.6)}
+#zP{left:50%;width:50%;background:rgba(0,200,255,.08);border-left:3px dashed rgba(255,255,255,.6)}
+.zt{position:absolute;bottom:8px;width:100%;text-align:center;font-size:18px;opacity:.8}
+#labels{position:fixed;inset:0;pointer-events:none;z-index:5}
+.lb{position:fixed;transform:translate(-50%,-100%);font-size:clamp(22px,2.6vw,38px);font-weight:600;background:#fff;color:#222;padding:0 14px;border-radius:16px;border:3px solid #ff9800;white-space:nowrap}
+#hud,#side,#bar,#pop{display:none}
+body.playing #hud{display:flex}body.playing #side{display:flex}
+#hud{position:fixed;top:10px;left:0;right:0;flex-direction:column;align-items:center;gap:8px;z-index:8;pointer-events:none}
+#row{display:flex;gap:12px;flex-wrap:wrap;justify-content:center}
+.pill{padding:4px 20px;border-radius:22px;font-size:clamp(18px,2.2vw,32px);box-shadow:0 4px 0 rgba(0,0,0,.3);font-weight:500}
+.p1{background:#ff9800}.p2{background:#2196f3}.p3{background:#9c27b0}.p4{background:#009688;font-size:clamp(14px,1.5vw,22px)}
+#msg{background:rgba(0,0,0,.6);padding:4px 24px;border-radius:20px;font-size:clamp(20px,2.4vw,34px)}
+#side{position:fixed;right:12px;top:50%;transform:translateY(-50%);flex-direction:column;gap:12px;z-index:9}
+.btn{border:0;border-radius:16px;padding:10px 16px;font-size:20px;color:#fff;background:#455a64;cursor:pointer;box-shadow:0 6px 0 #263238;transition:transform .05s,box-shadow .05s}
+.btn.on{background:#2ecc40;box-shadow:0 6px 0 #1b8f2a}
+.btn.rs{background:#ff7043;box-shadow:0 6px 0 #c4451f}
+.btn:active{transform:translateY(5px);box-shadow:0 1px 0 rgba(0,0,0,.4)}
+#bar{position:fixed;z-index:7;width:30px;height:150px;border:3px solid #fff;border-radius:15px;background:rgba(0,0,0,.5);overflow:hidden;transform:translateY(-50%)}
+#fill{position:absolute;bottom:0;left:0;right:0;height:0;background:linear-gradient(#ff1744,#ffea00,#00e676)}
+#pct{position:fixed;z-index:7;font-size:24px;font-weight:600;text-shadow:0 2px 4px #000;transform:translate(-50%,-190%)}
+#pop{position:fixed;left:50%;top:45%;transform:translate(-50%,-50%);font-size:clamp(80px,14vw,200px);font-weight:600;z-index:15;pointer-events:none;opacity:0;text-shadow:0 6px 0 rgba(0,0,0,.35);display:block}
+#pop.pos{color:#2ecc40}#pop.neg{color:#ff1744}
+@keyframes pop{0%{opacity:0;transform:translate(-50%,-50%) scale(.5)}15%{opacity:1;transform:translate(-50%,-50%) scale(1.1)}70%{opacity:1;transform:translate(-50%,-50%) scale(1)}100%{opacity:0;transform:translate(-50%,-60%) scale(1)}}
+.ov{position:fixed;inset:0;z-index:20;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,#7b2ff7,#2575fc 55%,#ff6a88);overflow:auto}
+.card{background:rgba(255,255,255,.96);color:#333;border-radius:28px;padding:26px 38px;max-width:780px;width:92%;text-align:center}
+.card h1{margin:0 0 8px;font-size:clamp(28px,4vw,48px);color:#7b2ff7}
+.card p,.card li{font-size:clamp(16px,1.8vw,22px);line-height:1.5;margin:4px 0;text-align:left}
+.big{font-size:26px;padding:14px 34px;border:0;border-radius:40px;background:#ff9800;color:#fff;cursor:pointer;box-shadow:0 6px 0 #c66900;margin:8px}
+.big:active{transform:translateY(5px);box-shadow:0 1px 0 #c66900}
+.st{font-size:22px;margin:6px 0;text-align:left;display:flex;gap:10px;align-items:center}
+.sp{width:22px;height:22px;border:4px solid #ccc;border-top-color:#7b2ff7;border-radius:50%;animation:spin .8s linear infinite;flex:none}
+@keyframes spin{to{transform:rotate(360deg)}}
+.ok{color:#2ecc40;font-weight:700}.er{color:#e53935;font-weight:700}
+.hid{display:none!important}
+</style></head><body>
+<video id="cam" playsinline muted></video>
+<div class="zone" id="zF"><div class="zt">โซนผลไม้</div></div><div class="zone" id="zP"><div class="zt">โซนนักธนู</div></div>
+<canvas id="gl"></canvas><canvas id="dots"></canvas><div id="labels"></div>
+<div id="hud"><div id="row"><span class="pill p1">⭐ <b id="sc">0</b></span><span class="pill p2">⏱ <b id="tm">00:00</b></span><span class="pill p3">ข้อ <b id="qn">0/15</b></span><span class="pill p4" id="hl"></span></div><div id="msg"></div></div>
+<div id="side"><button class="btn" id="bSwap">🔄 สลับมือ</button><button class="btn on" id="bDots">✋ จุดมือ</button><button class="btn on" id="bSnd">🔊 เสียง</button><button class="btn rs" id="bRst">↻ เริ่มใหม่</button></div>
+<div id="bar"><div id="fill"></div></div><div id="pct"></div><div id="pop"></div>
+<div class="ov" id="startOv"><div class="card"><h1>🏹 AR ยิงธนูสู้คำกริยา</h1>
+<p>🖐 มือซ้ายถือคันธนู · ✊ มือขวากำมือใกล้ธนูแล้วดึงสายถอยหลัง · 🖐 แบมือเพื่อยิง</p>
+<p>🎯 ยิงเฉพาะ <b>คำกริยา</b> +10 · ยิงคำนาม −5 · กริยาตกพื้น −5 · ทั้งหมด 15 ข้อ</p>
+<p style="font-size:15px;color:#666">ต้องเปิดผ่าน HTTPS หรือ localhost เพื่อใช้กล้อง (เปิดไฟล์ตรง ๆ อาจใช้กล้องไม่ได้)</p>
+<div id="steps" class="hid"><div class="st"><span id="s1i"></span><span id="s1t">เปิดกล้อง</span></div><div class="st"><span id="s2i"></span><span id="s2t">โหลด AI Track มือ</span></div></div>
+<button class="big" id="bCheck">ตรวจสอบกล้องและโหลด AI Track</button><button class="big hid" id="bRetry">ลองใหม่</button><button class="big hid" id="bStart" style="background:#2ecc40;box-shadow:0 6px 0 #1b8f2a">▶ เริ่มเกม</button></div></div>
+<div class="ov hid" id="endOv"><div class="card"><h1>🎉 จบเกม!</h1><p style="text-align:center;font-size:32px">คะแนนรวม <b id="fs">0</b></p><p style="text-align:center">เวลา <b id="ft"></b></p><button class="big" id="bAgain">เล่นอีกครั้ง</button></div></div>
+<script>
+"use strict";
+/* ===== CONFIG ===== */
+const CFG={total:15,g:700,vMin:700,vMax:2600,dead:.05,maxPull:.38,near:.24,minF:.12,holdLost:.5,fallT:16,arrowL:95,stick:1,fade:.5,pullMax:55};
+const VERBS=['วิ่ง','กิน','อ่าน','เขียน','นอน','เดิน','กระโดด','ร้อง','ว่ายน้ำ','เต้น','ยิ้ม','หัวเราะ','วาด','ฟัง','ขี่'];
+const NOUNS=['ครู','บ้าน','โรงเรียน','แมว','หนังสือ','โต๊ะ','ดินสอ','นักเรียน','ต้นไม้','รถ','ปลา','ข้าว','นก','ดอกไม้','ช้าง'];
+const COLS=[0xe53935,0xfb8c00,0xfdd835,0x8e24aa,0x43a047,0xec407a];
+/* ===== DOM ===== */
+const $=id=>document.getElementById(id),vid=$('cam'),dc=$('dots'),octx=dc.getContext('2d');
+/* ===== GAME STATE ===== */
+const S={mode:'idle',score:0,time:0,done:0,order:[],q:null,hands:{L:null,R:null},swap:false,dots:true,sound:true,sys:{cam:false,ai:false},
+ pull:{on:false,force:0,visual:0,lost:0,cd:0},aim:{x:-1,y:.1},bow:{x:0,y:0},fruits:[],arrows:[],msgT:0};
+let W,H,R,BS,hands=null,camU=null,busy=false;
+const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
+const shuffle=a=>{a=a.slice();for(let i=a.length-1;i>0;i--){const j=Math.random()*(i+1)|0;[a[i],a[j]]=[a[j],a[i]]}return a};
+const fmt=t=>String(t/60|0).padStart(2,'0')+':'+String(t%60|0).padStart(2,'0');
+/* ===== SOUND (Web Audio, ไม่มีไฟล์เสียง) ===== */
+let AC=null,master,chO=null,chG=null;
+function ac(){if(!AC){AC=new(window.AudioContext||window.webkitAudioContext)();master=AC.createGain();master.gain.value=.35;master.connect(AC.destination)}if(AC.state==='suspended')AC.resume();return AC}
+function tone(f,d,type='sine',v=.25,to=null,delay=0){if(!S.sound)return;const a=ac(),t=a.currentTime+delay,o=a.createOscillator(),g=a.createGain();o.type=type;o.frequency.setValueAtTime(f,t);if(to)o.frequency.exponentialRampToValueAtTime(to,t+d);g.gain.setValueAtTime(.0001,t);g.gain.exponentialRampToValueAtTime(v,t+.01);g.gain.exponentialRampToValueAtTime(.0001,t+d);o.connect(g);g.connect(master);o.start(t);o.stop(t+d+.03)}
+const seq=(fs,d,type,v,gap)=>fs.forEach((f,i)=>tone(f,d,type,v,null,i*gap));
+const SFX={click:()=>tone(600,.08,'square',.12),toggle:on=>tone(on?800:400,.12,'triangle',.2,on?1100:280),
+ checkStart:()=>seq([400,600],.1,'sine',.2,.1),camOK:()=>tone(660,.15,'triangle',.25),aiOK:()=>seq([784,988],.12,'triangle',.25,.08),
+ ready:()=>seq([523,659,784,1047],.15,'triangle',.25,.1),start:()=>tone(300,.45,'sawtooth',.15,900),pull:()=>tone(220,.12,'square',.12,330),
+ release:()=>{tone(900,.25,'sawtooth',.15,150);tone(2000,.1,'sine',.08,500)},weak:()=>tone(150,.25,'sawtooth',.2,80),
+ hitVerb:()=>seq([660,880,1320],.12,'triangle',.28,.07),hitDecoy:()=>tone(220,.3,'square',.22,100),verbFall:()=>tone(330,.45,'triangle',.25,90),
+ edge:()=>tone(130,.09,'square',.2),nextQ:()=>seq([500,700],.1,'sine',.18,.08),end:()=>seq([523,659,784,1047,784,1047,1318],.2,'triangle',.28,.15),mute:on=>tone(on?700:300,.15,'sine',.2)};
+const lastS={};
+function sfx(n,p){const t=performance.now();if(lastS[n]&&t-lastS[n]<60)return;lastS[n]=t;try{SFX[n](p)}catch(e){}}
+function charge(f){/* เสียงชาร์จเปลี่ยนตามแรงดึง; f<0 = หยุด */
+ if(f<0||!S.sound){if(chO){chG.gain.setTargetAtTime(0,AC.currentTime,.03);chO.stop(AC.currentTime+.2);chO=null}return}
+ const a=ac();if(!chO){chO=a.createOscillator();chG=a.createGain();chO.type='triangle';chG.gain.value=0;chO.connect(chG);chG.connect(master);chO.start()}
+ chO.frequency.setTargetAtTime(180+f*520,a.currentTime,.05);chG.gain.setTargetAtTime(.04+f*.05,a.currentTime,.05)}
+/* ===== THREE SETUP ===== */
+const renderer=new THREE.WebGLRenderer({canvas:$('gl'),alpha:true,antialias:true}),scene=new THREE.Scene();let cam3;
+scene.add(new THREE.AmbientLight(0xffffff,.85));const dl=new THREE.DirectionalLight(0xffffff,.9);dl.position.set(-300,500,700);scene.add(dl);
+function resize(){W=innerWidth;H=innerHeight;renderer.setPixelRatio(Math.min(devicePixelRatio,2));renderer.setSize(W,H);
+ cam3=new THREE.OrthographicCamera(0,W,H,0,-2000,2000);cam3.position.z=500;dc.width=W;dc.height=H;
+ R=clamp(H*.06,34,58);BS=clamp(H/800,.7,1.3)}
+addEventListener('resize',resize);resize();S.bow.x=W*.75;S.bow.y=H*.55;
+function mat(c,arr){const m=new THREE.MeshStandardMaterial({color:c,roughness:.55,transparent:true});if(arr)arr.push(m);return m}
+/* คันธนู: ก้านโค้งรูป S, ปลาย, ด้ามจับ, สาย (ยิงไปทาง +x ในพิกัดท้องถิ่น) */
+const bow=new THREE.Group(),bPts=[[4,-80],[-6,-62],[-14,-35],[-8,-12],[0,0],[-8,12],[-14,35],[-6,62],[4,80]].map(p=>new THREE.Vector3(p[0],p[1],0));
+bow.add(new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(bPts),48,3.4,8),mat(0x8d5524)));
+const grip=new THREE.Mesh(new THREE.CylinderGeometry(5,5,28,12),mat(0x3e2723));grip.position.x=-1;bow.add(grip);
+[80,-80].forEach(y=>{const n=new THREE.Mesh(new THREE.SphereGeometry(4.5,10,8),mat(0xffc107));n.position.set(4,y,0);bow.add(n)});
+const strM=new THREE.MeshStandardMaterial({color:0xfafafa,emissive:0x555555}),s1=new THREE.Mesh(new THREE.CylinderGeometry(1,1,1,6),strM),s2=s1.clone();bow.add(s1,s2);
+function setSeg(m,ax,ay,bx,by){const dx=bx-ax,dy=by-ay;m.position.set((ax+bx)/2,(ay+by)/2,0);m.scale.set(1,Math.hypot(dx,dy),1);m.rotation.z=Math.atan2(dy,dx)-Math.PI/2}
+function makeArrow(){const g=new THREE.Group(),mats=[],L=CFG.arrowL;
+ const sh=new THREE.Mesh(new THREE.CylinderGeometry(1.7,1.7,L-14,8),mat(0xdeb887,mats));sh.rotation.z=-Math.PI/2;sh.position.x=(L-14)/2;g.add(sh);
+ const hd=new THREE.Mesh(new THREE.ConeGeometry(4.5,14,10),mat(0xb0bec5,mats));hd.rotation.z=-Math.PI/2;hd.position.x=L-7;g.add(hd);
+ for(let i=0;i<3;i++){const f=new THREE.Mesh(new THREE.BoxGeometry(14,.8,8),mat(0xe53935,mats));f.position.x=9;f.rotation.x=i*Math.PI/3;g.add(f)}
+ return{g,mats}}
+const bArrow=makeArrow();bArrow.g.visible=false;bow.add(bArrow.g);bow.visible=false;scene.add(bow);
+/* ===== HAND TRACKING ===== */
+function mp(lm){/* พิกัด MediaPipe → พิกัดจอ (กลับภาพกระจก + object-fit:cover) */
+ const vw=vid.videoWidth||1280,vh=vid.videoHeight||720,s=Math.max(W/vw,H/vh);
+ return{x:W-(lm.x*vw*s-(vw*s-W)/2),y:H-(lm.y*vh*s-(vh*s-H)/2)}}
+function gest(lm){const vw=vid.videoWidth||1280,vh=vid.videoHeight||720,d=(a,b)=>Math.hypot((a.x-b.x)*vw,(a.y-b.y)*vh);let s=0;
+ [[8,5],[12,9],[16,13],[20,17]].forEach(([t,m])=>s+=d(lm[t],lm[0])/d(lm[m],lm[0]));s/=4;return s<1.35?'fist':s>1.75?'open':'half'}
+const ST={L:{g:'',p:'',n:0},R:{g:'',p:'',n:0}};
+function stab(k,h){const s=ST[k];if(!h){s.g=s.p='';s.n=0;return null}
+ if(!s.g)s.g=h.g;else if(h.g===s.g){s.p='';s.n=0}else if(h.g===s.p){if(++s.n>=2){s.g=h.g;s.p='';s.n=0}}else{s.p=h.g;s.n=1}
+ h.g=s.g;return h}
+function onResults(r){const ls=r.multiHandLandmarks||[],hd=r.multiHandedness||[];
+ const list=ls.map((lm,i)=>{const a=mp(lm[9]),b=mp(lm[0]);return{x:(a.x+b.x)/2,y:(a.y+b.y)/2,g:gest(lm),raw:(hd[i]&&hd[i].label)||'Left',lm}});
+ let l=null,rr=null;
+ if(list.length>=2){list.sort((a,b)=>a.x-b.x);l=list[0];rr=list[1]}/* จอกลับภาพ: มือซ้ายผู้เล่นอยู่ซ้ายจอ */
+ else if(list.length===1){if(list[0].raw==='Right')l=list[0];else rr=list[0]}/* ภาพไม่กลับ → ป้าย Right = มือซ้ายจริง */
+ if(S.swap)[l,rr]=[rr,l];
+ S.hands.L=stab('L',l);S.hands.R=stab('R',rr);
+ octx.clearRect(0,0,W,H);if(!S.dots)return;
+ list.forEach(h=>{octx.fillStyle=h===S.hands.L?'#00e676':h===S.hands.R?'#ff9100':'#fff';h.lm.forEach(p=>{const q=mp(p);octx.beginPath();octx.arc(q.x,q.y,5,0,7);octx.fill()})})}
+/* ===== FRUITS ===== */
+function makeFruit(c){const g=new THREE.Group(),mats=[];g.add(new THREE.Mesh(new THREE.SphereGeometry(1,24,18),mat(c,mats)));
+ const st=new THREE.Mesh(new THREE.CylinderGeometry(.06,.08,.4,6),mat(0x5d4037,mats));st.position.y=1.05;g.add(st);
+ const lf=new THREE.Mesh(new THREE.SphereGeometry(.35,10,8),mat(0x2e7d32,mats));lf.scale.set(1.2,.3,.6);lf.position.set(.35,1.1,0);g.add(lf);return{g,mats}}
+function clearFruits(){S.fruits.forEach(removeFruit);S.fruits=[]}
+function removeFruit(f){scene.remove(f.m.g);f.el.remove()}
+function spawnQ(){clearFruits();const v=S.order[S.done],ns=shuffle(NOUNS).slice(0,2),yo=shuffle([0,1,2]);
+ const items=shuffle([{w:v,t:'verb'},{w:ns[0],t:'noun'},{w:ns[1],t:'noun'}]);S.q={st:'play',t:0,verb:null,vg:false};
+ items.forEach((it,i)=>{const m=makeFruit(COLS[Math.random()*COLS.length|0]),el=document.createElement('div');el.className='lb';el.textContent=it.w;$('labels').appendChild(el);
+  const f={type:it.t,word:it.w,m,el,lane:i,x:0,y:H+R*1.6+yo[i]*(R*2.4+40),st:'fall',t:0,op:1,spin:Math.random()*6,fast:0};scene.add(m.g);S.fruits.push(f);if(it.t==='verb')S.q.verb=f});
+ sfx('nextQ')}
+function endQ(){S.q.st='resolving';S.fruits.forEach(f=>{if(f!==S.q.verb&&f.st==='fall'){f.st='fade';f.t=0;f.fast=0}})}
+function updFruits(dt){const lw=W*.25/3;
+ for(const f of S.fruits){
+  if(f.st==='fall'){f.x=lw*(f.lane+.5);f.y-=H/CFG.fallT*dt;
+   if(f.y<=R){f.y=R;if(f.type==='verb'&&S.q.st==='play'){addScore(-5,'-5 กริยาตกพื้น');sfx('verbFall');endQ()}f.st='fade';f.t=0;f.fast=1}}
+  else if(f.st==='carry'){const dx=f.tx-f.x,dy=f.ty-f.y,d=Math.hypot(dx,dy),s=1300*dt;if(d<=s){f.x=f.tx;f.y=f.ty;f.st='stuck';f.t=0;sfx('edge')}else{f.x+=dx/d*s;f.y+=dy/d*s}}
+  else if(f.st==='stuck'){f.t+=dt;if(f.t>=CFG.stick){f.st='fade';f.t=0}}
+  else if(f.st==='fade'){f.t+=dt;f.op=1-f.t/(f.fast?.3:CFG.fade);if(f.op<=0){f.op=0;f.st='gone'}}
+  f.spin+=dt*1.5;f.m.g.position.set(f.x,f.y,0);f.m.g.scale.setScalar(R);f.m.g.rotation.set(.35,f.spin,0);f.m.mats.forEach(m=>m.opacity=f.op);
+  f.el.style.left=f.x+'px';f.el.style.top=(H-f.y-R*1.15)+'px';f.el.style.opacity=f.op}
+ S.fruits=S.fruits.filter(f=>{if(f.st==='gone'){if(f===S.q.verb)S.q.vg=true;removeFruit(f);f.dead=true;return false}return true})}
+function updQ(dt){const q=S.q;if(!q)return;
+ if(q.st==='resolving'&&q.vg){q.st='wait';q.t=0;S.done++}
+ if(q.st==='wait'){q.t+=dt;if(q.t>=.5){if(S.done>=CFG.total)endGame();else spawnQ()}}}
+/* ===== ARROWS ===== */
+function segHit(ax,ay,bx,by,cx,cy,r){const dx=bx-ax,dy=by-ay,l=dx*dx+dy*dy;let t=l?((cx-ax)*dx+(cy-ay)*dy)/l:0;t=clamp(t,0,1);const px=ax+dx*t-cx,py=ay+dy*t-cy;return px*px+py*py<=r*r}
+function fire(f){const sp=CFG.vMin+f*(CFG.vMax-CFG.vMin),d=S.aim,n=(4-S.pull.visual)*BS,a=makeArrow();a.g.scale.setScalar(BS);scene.add(a.g);
+ S.arrows.push({...a,x:S.bow.x+d.x*n,y:S.bow.y+d.y*n,dx:d.x,dy:d.y,vx:d.x*sp,vy:d.y*sp,L:CFG.arrowL*BS,st:'fly',t:0,op:1});
+ sfx('release');showMsg('ยิง! '+Math.round(f*100)+'%')}
+function hit(a,f){/* ชนผลไม้: ปักผลไม้ ให้คะแนนทันที แล้วพาไปปักขอบจอ */
+ a.st='carry';a.f=f;a.ox=a.x-f.x;a.oy=a.y-f.y;f.st='carry';f.t=0;
+ const dl_=f.x,dt_=H-f.y,db=f.y,mn=Math.min(dl_,dt_,db);f.tx=f.x;f.ty=f.y;if(mn===dl_)f.tx=R*.6;else if(mn===dt_)f.ty=H-R*.6;else f.ty=R*.6;
+ if(f.type==='verb'){addScore(10,'+10 ถูกต้อง');sfx('hitVerb');endQ()}else{addScore(-5,'-5 คำหลอก');sfx('hitDecoy')}}
+function updArrows(dt){
+ for(const a of S.arrows){
+  if(a.st==='fly'){const px=a.x+a.dx*a.L,py=a.y+a.dy*a.L;a.vy-=CFG.g*dt;a.x+=a.vx*dt;a.y+=a.vy*dt;
+   const sp=Math.hypot(a.vx,a.vy);a.dx=a.vx/sp;a.dy=a.vy/sp;let tx=a.x+a.dx*a.L,ty=a.y+a.dy*a.L;
+   if(S.q&&S.q.st==='play')for(const f of S.fruits)if(f.st==='fall'&&f.y<H&&segHit(px,py,tx,ty,f.x,f.y,R*.95)){hit(a,f);break}/* ตรวจชนแบบ sweep ระหว่างเฟรม */
+   if(a.st==='fly'&&(tx<0||tx>W||ty<0||ty>H)){tx=clamp(tx,0,W);ty=clamp(ty,0,H);a.x=tx-a.dx*a.L;a.y=ty-a.dy*a.L;a.st='stuck';a.t=0;sfx('edge')}}
+  else if(a.st==='carry'){a.x=a.f.x+a.ox;a.y=a.f.y+a.oy;a.op=a.f.op;if(a.f.dead)a.st='gone'}
+  else if(a.st==='stuck'){a.t+=dt;if(a.t>CFG.stick){a.op=1-(a.t-CFG.stick)/CFG.fade;if(a.op<=0)a.st='gone'}}
+  a.g.position.set(a.x,a.y,0);a.g.rotation.z=Math.atan2(a.dy,a.dx);a.mats.forEach(m=>m.opacity=a.op)}
+ S.arrows=S.arrows.filter(a=>{if(a.st==='gone'){scene.remove(a.g);return false}return true})}
+/* ===== BOW + PULL ===== */
+function updBow(dt){const m=95*BS,L=S.hands.L,p=S.pull,Rh=S.hands.R;let tx=S.bow.x,ty=S.bow.y;if(L){tx=L.x;ty=L.y}
+ tx=clamp(tx,W*.5+m,W-m);ty=clamp(ty,m,H-m);const k=1-Math.exp(-dt*16);S.bow.x+=(tx-S.bow.x)*k;S.bow.y+=(ty-S.bow.y)*k;/* จำกัดคันธนูในครึ่งจอขวา */
+ let ax=-1,ay=.1;if(p.on){ax=S.aim.x;ay=S.aim.y;if(Rh){const dx=S.bow.x-Rh.x,dy=S.bow.y-Rh.y,d=Math.hypot(dx,dy);if(d>12){ax=dx/d;ay=dy/d}}}
+ const ka=1-Math.exp(-dt*(p.on?20:6));S.aim.x+=(ax-S.aim.x)*ka;S.aim.y+=(ay-S.aim.y)*ka;const n=Math.hypot(S.aim.x,S.aim.y)||1;S.aim.x/=n;S.aim.y/=n;
+ p.visual=p.on?p.force*CFG.pullMax:0;bow.visible=S.mode==='playing';bow.position.set(S.bow.x,S.bow.y,0);bow.scale.setScalar(BS);bow.rotation.z=Math.atan2(S.aim.y,S.aim.x);
+ const nk=4-p.visual;setSeg(s1,4,80,nk,0);setSeg(s2,nk,0,4,-80);bArrow.g.visible=p.on;bArrow.g.position.x=nk;
+ const b=$('bar'),pc=$('pct');b.style.display=pc.style.display=p.on?'block':'none';
+ if(p.on){const x=Math.min(S.bow.x+100*BS,W-60),y=H-S.bow.y;b.style.left=x+'px';b.style.top=y+'px';pc.style.left=(x+15)+'px';pc.style.top=y+'px';
+  $('fill').style.height=Math.round(p.force*100)+'%';pc.textContent=Math.round(p.force*100)+'%'}}
+function updPull(dt){const p=S.pull,Rh=S.hands.R;p.cd=Math.max(0,p.cd-dt);
+ if(!Rh){if(p.on){p.lost+=dt;if(p.lost>CFG.holdLost){p.on=false;p.force=0}}return}/* มือหาย: คงสถานะ+แรงล่าสุดไว้ ไม่ยิงเอง */
+ p.lost=0;const d=Math.hypot(Rh.x-S.bow.x,Rh.y-S.bow.y);
+ if(!p.on){if(Rh.g==='fist'&&p.cd<=0&&d<H*CFG.near){p.on=true;p.force=0;sfx('pull')}return}
+ if(Rh.g==='open'){p.on=false;p.cd=.3;if(p.force<CFG.minF){sfx('weak');showMsg('แรงน้อยไป ดึงให้ไกลกว่านี้')}else fire(p.force);p.force=0;return}/* ใช้ค่าแรงล่าสุดก่อนแบมือ */
+ const raw=clamp((d-H*CFG.dead)/(H*(CFG.maxPull-CFG.dead)),0,1);p.force+=(raw-p.force)*(1-Math.exp(-dt*10))}
+/* ===== SCORE / UI ===== */
+function showMsg(t){$('msg').textContent=t;S.msgT=2.2}
+function addScore(d,msg){S.score=Math.max(0,S.score+d);showMsg(msg);const p=$('pop');p.textContent=(d>0?'+':'')+d;p.className=d>0?'pos':'neg';p.style.animation='none';void p.offsetWidth;p.style.animation='pop 1s ease-out forwards'}
+const GT={fist:'กำมือ',half:'กึ่งแบ',open:'แบมือ'},hs=h=>h?(GT[h.g]||'เจอ'):'ไม่เจอ';
+function updHud(dt){S.msgT-=dt;if(S.msgT<=0)$('msg').textContent='ยิงเฉพาะ “คำกริยา” เท่านั้น!';
+ $('sc').textContent=S.score;$('tm').textContent=fmt(S.time);$('qn').textContent=S.done+'/'+CFG.total;$('hl').textContent='ซ้าย: '+hs(S.hands.L)+' | ขวา: '+hs(S.hands.R)}
+/* ===== GAME FLOW ===== */
+function resetGame(){S.arrows.forEach(a=>scene.remove(a.g));S.arrows=[];clearFruits();Object.assign(S,{score:0,time:0,done:0,q:null,msgT:0});
+ Object.assign(S.pull,{on:false,force:0,visual:0,lost:0,cd:0});S.order=shuffle(VERBS).slice(0,CFG.total);$('pop').style.animation='none';spawnQ()}
+function startGame(){if(!S.sys.cam||!S.sys.ai)return;$('startOv').classList.add('hid');$('endOv').classList.add('hid');document.body.classList.add('playing');resetGame();S.mode='playing';sfx('start')}
+function endGame(){S.mode='ended';S.q=null;$('fs').textContent=S.score;$('ft').textContent=fmt(S.time);$('endOv').classList.remove('hid');document.body.classList.remove('playing');sfx('end')}
+/* ===== GAME LOOP ===== */
+let last=performance.now();
+function loop(t){requestAnimationFrame(loop);const dt=Math.min((t-last)/1000,.05);last=t;
+ if(S.mode==='playing'){S.time+=dt;updBow(dt);updPull(dt);updFruits(dt);updArrows(dt);updQ(dt);updHud(dt)}else updBow(dt);
+ charge(S.mode==='playing'&&S.pull.on?S.pull.force:-1);renderer.render(scene,cam3)}
+requestAnimationFrame(loop);
+/* ===== SYSTEM CHECK (กล้อง + AI) ===== */
+function setStep(n,state,msg){const i=$('s'+n+'i'),t=$('s'+n+'t'),name=n==1?'เปิดกล้อง':'โหลด AI Track มือ';
+ i.innerHTML=state==='load'?'<span class="sp"></span>':state==='ok'?'<span class="ok">✓</span>':'<span class="er">✗</span>';
+ t.innerHTML=state==='err'?name+' — <span class="er">'+msg+'</span>':name}
+async function initCam(){if(S.sys.cam)return;
+ if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia)throw new Error('เบราว์เซอร์ไม่อนุญาตให้ใช้กล้อง ต้องเปิดผ่าน HTTPS หรือ localhost');
+ if(!window.Camera)throw new Error('โหลด Camera Utils ไม่สำเร็จ (ตรวจสอบอินเทอร์เน็ต)');
+ camU=new Camera(vid,{onFrame:async()=>{if(S.sys.ai&&!busy){busy=true;try{await hands.send({image:vid})}catch(e){}busy=false}},width:1280,height:720});
+ try{await camU.start()}catch(e){throw new Error('เปิดกล้องไม่ได้ กรุณากดอนุญาตการใช้กล้อง ('+(e.name||e.message)+')')}S.sys.cam=true}
+async function initAI(){if(S.sys.ai)return;if(!window.Hands)throw new Error('โหลด MediaPipe Hands ไม่สำเร็จ (ตรวจสอบอินเทอร์เน็ต)');
+ try{if(!hands){hands=new Hands({locateFile:f=>'https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1675469240/'+f});
+  hands.setOptions({maxNumHands:2,modelComplexity:1,minDetectionConfidence:.6,minTrackingConfidence:.5});hands.onResults(onResults)}
+  await hands.initialize()}catch(e){throw new Error('โหลดโมเดลมือไม่สำเร็จ ('+(e.message||e)+')')}S.sys.ai=true}
+async function runCheck(){sfx('click');sfx('checkStart');$('steps').classList.remove('hid');$('bCheck').classList.add('hid');$('bRetry').classList.add('hid');
+ const step=async(n,fn,ok)=>{if(n==1?S.sys.cam:S.sys.ai){setStep(n,'ok');return}setStep(n,'load');try{await fn();setStep(n,'ok');sfx(ok)}catch(e){setStep(n,'err',e.message||String(e))}};
+ await Promise.all([step(1,initCam,'camOK'),step(2,initAI,'aiOK')]);
+ if(S.sys.cam&&S.sys.ai){$('bStart').classList.remove('hid');sfx('ready')}else $('bRetry').classList.remove('hid')}
+/* ===== BUTTONS ===== */
+$('bCheck').onclick=runCheck;$('bRetry').onclick=runCheck;$('bStart').onclick=()=>{sfx('click');startGame()};
+$('bAgain').onclick=()=>{sfx('click');startGame()};$('bRst').onclick=()=>{sfx('click');startGame()};
+$('bSwap').onclick=e=>{S.swap=!S.swap;e.currentTarget.classList.toggle('on',S.swap);sfx('toggle',S.swap)};
+$('bDots').onclick=e=>{S.dots=!S.dots;e.currentTarget.classList.toggle('on',S.dots);if(!S.dots)octx.clearRect(0,0,W,H);sfx('toggle',S.dots)};
+$('bSnd').onclick=e=>{if(S.sound){sfx('mute',false);S.sound=false}else{S.sound=true;sfx('mute',true)}e.currentTarget.classList.toggle('on',S.sound)};
+</script></body></html>
